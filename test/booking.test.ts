@@ -107,7 +107,7 @@ describe('Booking API', () => {
 
         expect(error).toBeInstanceOf(AxiosError);
         expect(error.response.status).toBe(400);
-        expect(error.response.data).toEqual('For the given check-in date, the unit is already occupied');
+        expect(error.response.data).toEqual('For the given check-in date and number of nights, the unit is already occupied');
     });
 
     test('Different guest same unit booking different date', async () => {
@@ -117,14 +117,20 @@ describe('Booking API', () => {
         expect(response1.data.guestName).toBe(GUEST_A_UNIT_1.guestName);
 
         // GuestB trying to book a unit that is already occupied
-        const response2 = await axios.post('http://localhost:8000/api/v1/booking', {
-            unitID: '1',
-            guestName: 'GuestB',
-            checkInDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            numberOfNights: 5
-        });
+        let error: any;
+        try {
+            await axios.post('http://localhost:8000/api/v1/booking', {
+                unitID: '1',
+                guestName: 'GuestB',
+                checkInDate: new Date(new Date().getTime() + 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+                numberOfNights: 5
+            });
+        } catch (e) {
+            error = e;
+        }
 
-        expect(response2.status).toBe(400);
-        expect(response2.data.detail).toBe('For the given check-in date, the unit is already occupied');
+        expect(error).toBeInstanceOf(AxiosError);
+        expect(error.response.status).toBe(400);
+        expect(error.response.data).toBe('For the given check-in date and number of nights, the unit is already occupied');
     });
 });
