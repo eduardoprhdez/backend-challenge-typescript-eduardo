@@ -1,49 +1,65 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../prisma';
-import { BookingInput, BookingWithCheckOut } from '../types/booking';
+import { BookingInput } from '../types/booking';
 
-export async function findOverlappingBookings(
-    guestName?: string, 
-    unitID?: string, 
-    checkInDate?: Date, 
-    numberOfNights?: number,
-    excludeBookingId?: number
-): Promise<BookingWithCheckOut[]> {
-    const conditions: Prisma.Sql[] = [];
+type ConflictCheckOptions = {
+    checkInDate: Date;
+    numberOfNights: number;
+    excludeBookingId?: number;
+} & (
+    | { type: 'guest'; guestName: string }
+    | { type: 'unit'; unitID: string }
+);
+
+export async function checkBookingConflict(options: ConflictCheckOptions): Promise<boolean> {
+    const checkOutDate = new Date(options.checkInDate);
+    checkOutDate.setDate(checkOutDate.getDate() + options.numberOfNights);
+
+    const where: any = {};
     
-    if (guestName) {
-        conditions.push(Prisma.sql`guestName = ${guestName}`);
+    if (options.type === 'guest') {
+        where.guestName = options.guestName;
+    } else if (options.type === 'unit') {
+        where.unitID = options.unitID;
     }
 
-    if (unitID) {
-        conditions.push(Prisma.sql`unitID = ${unitID}`);
+    if (options.excludeBookingId) {
+        where.id = { not: options.excludeBookingId };
     }
 
-    if (excludeBookingId) {
-        conditions.push(Prisma.sql`id != ${excludeBookingId}`);
+    const [pastBooking, futureBooking] = await Promise.all([
+        prisma.booking.findFirst({
+            where: {
+                ...where,
+                checkInDate: { lte: options.checkInDate }
+            },
+            orderBy: { checkInDate: 'desc' }
+        }),
+        
+        prisma.booking.findFirst({
+            where: {
+                ...where,
+                checkInDate: { gt: options.checkInDate }
+            },
+            orderBy: { checkInDate: 'asc' }
+        })
+    ]);
+
+    if (pastBooking) {
+        const pastCheckOut = new Date(pastBooking.checkInDate);
+        pastCheckOut.setDate(pastCheckOut.getDate() + pastBooking.numberOfNights);
+        if (pastCheckOut > options.checkInDate) {
+            return true;
+        }
     }
 
-    if (checkInDate && numberOfNights) {
-        const checkOutDate = new Date(checkInDate);
-        checkOutDate.setDate(checkOutDate.getDate() + numberOfNights);
-
-        conditions.push(Prisma.sql`checkInDate < ${checkOutDate.toISOString()}`);
-        conditions.push(Prisma.sql`checkOutDate > ${checkInDate.toISOString()}`);
+    if (futureBooking) {
+        if (futureBooking.checkInDate < checkOutDate) {
+            return true;
+        }
     }
 
-    let query = Prisma.sql`SELECT * FROM BookingWithCheckOut`;
-    
-    if (conditions.length > 0) {
-        query = Prisma.sql`${query} WHERE ${Prisma.join(conditions, ' AND ')}`;
-    }
-    
-    const results = await prisma.$queryRaw<BookingWithCheckOut[]>(query);
-    
-    return results.map(booking => ({
-        ...booking,
-        checkInDate: new Date(booking.checkInDate),
-        checkOutDate: new Date(booking.checkOutDate)
-    }));
+    return false;
 }
 
 export async function createBooking(bookingData: BookingInput) {

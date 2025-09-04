@@ -1,9 +1,117 @@
 # Backend Challenge - TypeScript
 
-> If you want, you may also complete this challenge in: 
-> [Python](https://github.com/limehome/backend-challenge-python)
-> or
-> [Java](https://github.com/limehome/backend-challenge-java)
+## Solution Overview
+
+This solution implements a robust booking management system with the following key improvements:
+
+### Bug Fixed: Booking Conflicts
+- **Issue**: A guest would arrive at their booked unit only to find that it's already occupied by someone else
+- **Root Cause**: The initial implementation only checked for bookings with the same check-in date, but the real requirement is preventing **preventing overlapping date ranges bookings**
+- **Solution**: To detect overlaps, we need to calculate checkout dates from the `numberOfNights` field and compare date ranges
+
+#### Overview of Possible Solutions
+
+**1. Process in Application Code**
+- ✅ Simple to implement, no schema changes
+- ❌ Poor performance (O(n) for each booking check)
+- ❌ Business logic mixed with data access
+
+**2. Add checkOutDate Column to Schema**  
+- ✅ Best query performance
+- ✅ Simple queries
+- ❌ Data duplication (calculated from existing fields)
+- ❌ Risk of data inconsistency
+
+**3. Complex Query with Date Calculation**
+```sql
+WHERE checkInDate < DATE(?, '+' || ? || ' days') 
+AND DATE(checkInDate, '+' || numberOfNights || ' days') > ?
+```
+- ✅ No schema changes
+- ✅ Accurate calculations
+- ❌ Complex, hard-to-read queries  
+- ❌ Date logic duplicated across multiple queries
+- ❌ No easy way to visualize/query checkout dates for debugging
+
+**4. Database View**
+```sql
+CREATE VIEW BookingWithCheckOut AS
+SELECT *, DATE(checkInDate, '+' || numberOfNights || ' days') as checkOutDate
+FROM booking;
+```
+- ✅ Clean, reusable abstraction
+- ✅ Simple queries: `WHERE checkInDate < ? AND checkOutDate > ?`
+- ✅ Database optimizes the view
+- ✅ Single source of truth for date calculations
+- ❌ Adds database object to maintain
+- ❌ Requires raw SQL with complex query building
+
+**5. Two Parallel Queries with ORM (Chosen Solution)**
+```typescript
+// Find nearest past and future bookings in parallel
+const [pastBooking, futureBooking] = await Promise.all([
+    prisma.booking.findFirst({ where: { guestName, checkInDate: { lte: date } }, orderBy: { checkInDate: 'desc' } }),
+    prisma.booking.findFirst({ where: { guestName, checkInDate: { gt: date } }, orderBy: { checkInDate: 'asc' } })
+]);
+```
+- ✅ Type-safe ORM operations (no raw SQL)
+- ✅ Predictable performance (always processes exactly 2 records)
+- ✅ Simple application logic for overlap detection
+- ✅ Parallelized queries for optimal performance
+- ✅ Easy to test and debug
+- ✅ Leverages proper database indexing
+- ❌ Two database queries instead of one
+
+**Why I Chose the Two-Query ORM Approach (After Initial Database View Implementation):**
+
+**Initial Approach:** I first implemented a database view solution with calculated `checkOutDate` fields.
+
+**Why I Changed:** Upon reflection, I realized the view approach introduced unnecessary complexity for this specific challenge:
+- Required raw SQL query building with `Prisma.$queryRaw`
+- Complex dynamic query templating with `Prisma.join()`
+- Manual TypeScript type definitions for `BookingWithCheckOut`
+- Added database schema objects to maintain
+
+**Final Solution Benefits:** The two-query ORM approach provides:
+- Type-safe operations using standard Prisma methods
+- Predictable performance (always processes exactly 2 records)
+- Parallelized queries with `Promise.all()` for optimal speed
+- Simple application logic that's easy to test and debug
+- No raw SQL complexity while maintaining excellent performance
+- Proper composite indexing: `(guestName, checkInDate)` and `(unitID, checkInDate)` enable O(log n) performance
+
+**Solution Limitation:** This approach can only detect *if* overlapping bookings exist, but not *how many* bookings overlap. If you needed to find all overlapping bookings within a date range (for reporting, complex business rules, or detailed conflict analysis), the database view approach would be superior. However, for the current requirements, simple conflict detection for booking creation and extension, this limitation is acceptable and the code simplicity benefits outweigh this constraint.
+
+**Performance Context:** The composite indexes ensure that even with millions of bookings, conflict detection remains consistently fast  regardless of dataset size.
+
+### New Feature: Booking Extensions
+- **Endpoint**: `POST /api/v1/booking/:id/extend`
+- **Functionality**: Allows guests to extend their stay if no conflicts exist
+- **Validation**: Prevents extending expired bookings and checks availability using the same conflict detection logic
+
+### 🏗️ Architecture Decisions
+
+**Database Design:**
+- Strategic composite indexes: `(guestName, checkInDate)` and `(unitID, checkInDate)`
+- Optimized for the two-query pattern with O(log n) performance
+- Separate databases for development (`app.db`) and testing (`test.db`)
+
+**Code Patterns and Organization:**
+- Function-based architecture appropriate for the domain complexity (2 use cases, 6 business rules, single aggregate)
+- Clear separation: Controllers → Services → Repositories
+- Two-layer validation: Input validation (middleware) + Business validation (services)
+- Middleware validation over OpenAPI: Ensures input validation works in production regardless of deployment setup, not just during development
+- No layered DDD architecture: Right-sized complexity to avoid over-engineering for this domain scope
+- No dependency inversion: Used direct imports for simplicity to avoid over-engineering for this scope
+
+**Testing Strategy:**
+- Integration tests over unit tests for better confidence
+- Complete database isolation between environments
+- Comprehensive coverage of all business rules and edge cases
+
+All decisions prioritize code quality, developer experience, and maintainable performance while avoiding unnecessary complexity.
+
+---
 
 ## Context
 
@@ -20,17 +128,15 @@ While we provide a choice of projects to work with (either `TS`, `Python`, or `J
 
 When implementing, make sure you follow known best practices around architecture, testability, and documentation.
 
-
 ## How to run
 
-### Prerequisutes
+### Prerequisites
 
 Make sure to have the following installed
 
 - npm
 
 ### Setup
-
 
 To get started, clone the repository locally and run the following
 
@@ -47,7 +153,6 @@ GET / 200 3.088 ms - 16
 ```
 
 To navigate to the swagger docs, open the url http://localhost:8000/api-docs/
-
 
 ### Running tests
 

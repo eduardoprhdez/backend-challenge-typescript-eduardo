@@ -2,13 +2,12 @@ import { BookingInput, ValidationResult, Booking } from '../types/booking';
 import * as bookingRepository from '../repositories/booking.repository';
 
 export async function validateNewBooking(booking: BookingInput): Promise<ValidationResult> {
-    // Check 1: Guest cannot have overlapping bookings (any unit)
-    const guestOverlapCheck = await validateGuestOverlap(booking);
+    const [guestOverlapCheck, unitAvailabilityCheck] = await Promise.all([
+        validateGuestOverlap(booking),
+        validateUnitAvailability(booking)
+    ]);
+
     if (!guestOverlapCheck.isValid) return guestOverlapCheck;
-
-
-    // Check 2: Unit must be available
-    const unitAvailabilityCheck = await validateUnitAvailability(booking);
     if (!unitAvailabilityCheck.isValid) return unitAvailabilityCheck;
 
     return { isValid: true, errorMessage: "" };
@@ -32,29 +31,29 @@ export async function validateBookingExtension(existingBooking: any, additionalN
 }
 
 async function validateGuestOverlap(booking: BookingInput): Promise<ValidationResult> {
-    const overlapping = await bookingRepository.findOverlappingBookings(
-        booking.guestName,
-        undefined,
-        booking.checkInDate, 
-        booking.numberOfNights
-    );
+    const overlapping = await bookingRepository.checkBookingConflict({
+        type: 'guest',
+        guestName: booking.guestName,
+        checkInDate: booking.checkInDate,
+        numberOfNights: booking.numberOfNights
+    });
 
-    if (overlapping.length > 0) {
+    if (overlapping) {
         return { isValid: false, errorMessage: "Guest already has a booking during these dates" };
     }
     return { isValid: true, errorMessage: "" };
 }
 
 async function validateUnitAvailability(booking: Booking, excludeBookingId?: number): Promise<ValidationResult> {
-    const overlapping = await bookingRepository.findOverlappingBookings(
-        undefined,
-        booking.unitID,
-        booking.checkInDate,
-        booking.numberOfNights,
+    const overlapping = await bookingRepository.checkBookingConflict({
+        type: 'unit',
+        unitID: booking.unitID,
+        checkInDate: booking.checkInDate,
+        numberOfNights: booking.numberOfNights,
         excludeBookingId
-    );
+    });
 
-    if (overlapping.length > 0) {
+    if (overlapping) {
         return { isValid: false, errorMessage: "The unit is already booked for one or more of the selected nights" };
     }
     return { isValid: true, errorMessage: "" };
