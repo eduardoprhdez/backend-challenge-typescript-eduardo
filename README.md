@@ -2,8 +2,6 @@
 
 ## Solution Overview
 
-This solution implements a robust booking management system with the following key improvements:
-
 ### Bug Fixed: Booking Conflicts
 - **Issue**: A guest would arrive at their booked unit only to find that it's already occupied by someone else
 - **Root Cause**: The initial implementation only checked for bookings with the same check-in date, but the real requirement is preventing **preventing overlapping date ranges bookings**
@@ -89,7 +87,7 @@ const [pastBooking, futureBooking] = await Promise.all([
 - **Functionality**: Allows guests to extend their stay if no conflicts exist
 - **Validation**: Prevents extending expired bookings and checks availability using the same conflict detection logic
 
-### 🏗️ Architecture Decisions
+### Architecture Decisions
 
 **Database Design:**
 - Strategic composite indexes: `(guestName, checkInDate)` and `(unitID, checkInDate)`
