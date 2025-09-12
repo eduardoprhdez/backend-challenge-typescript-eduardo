@@ -6,6 +6,13 @@ describe('Validation Middleware', () => {
     let mockRes: Partial<Response>;
     let mockNext: jest.Mock;
 
+    // Helper functions for dynamic dates
+    function getFutureDate(daysFromNow: number = 1): string {
+        const date = new Date();
+        date.setDate(date.getDate() + daysFromNow);
+        return date.toISOString().split('T')[0];
+    }
+
     beforeEach(() => {
         mockReq = {};
         mockRes = {
@@ -20,7 +27,7 @@ describe('Validation Middleware', () => {
             mockReq.body = {
                 guestName: 'TestGuest',
                 unitID: '1',
-                checkInDate: '2025-09-05',
+                checkInDate: getFutureDate(1), // Use tomorrow instead of hardcoded date
                 numberOfNights: 3
             };
 
@@ -34,7 +41,7 @@ describe('Validation Middleware', () => {
             mockReq.body = {
                 guestName: 'TestGuest',
                 unitID: '1',
-                checkInDate: '2025-09-05',
+                checkInDate: getFutureDate(1), // Use tomorrow instead of hardcoded date
                 numberOfNights: 0
             };
 

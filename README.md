@@ -9,6 +9,8 @@
 
 #### Overview of Possible Solutions
 
+> ⚠️ **Post-Submission Enhancement**: After submitting the original challenge solution, I added database triggers to eliminate race conditions completely. This enhancement addresses the limitation mentioned in the original solution where concurrent requests could create conflicting bookings between the conflict check and the actual insert/update operation. The triggers ensure atomic conflict detection at the database level, providing guaranteed data integrity under high concurrency scenarios.
+
 **1. Process in Application Code**
 - ✅ Simple to implement, no schema changes
 - ❌ Poor performance (O(n) for each booking check)
